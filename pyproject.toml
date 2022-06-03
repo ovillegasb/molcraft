@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=62.3.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "molcraft"
+version = "0.0.1"
+description="Python utilities for working with molecular systems"
+readme = "README.md"
+requires-python = ">=3.10.4"
+license = {text = "GNU General Public License v3.0"}
+authors = [
+    {name = "Orlando Villegas", email = "ovillegas.bello0317@gmail.com"}
+]
+keywords = [
+    "Atoms", "Molecules", "Bulk"
+]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities"  
+]
+urls = {Source = "https://github.com/ovillegasb/molcraft"}
