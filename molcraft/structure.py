@@ -7,13 +7,13 @@ MOL and ATOM.
 
 """
 
+import re
 import pandas as pd
 import numpy as np
 import networkx as nx
 import itertools as it
 from scipy.spatial.distance import cdist
 from molcraft.exceptions import MoleculeDefintionError
-
 
 Elements = {  # g/mol
     'H': {'mass': 1.0080, 'num': 1},
@@ -52,6 +52,58 @@ def load_xyz(file):
     coord["charge"] = 0.0
 
     return coord
+
+
+def load_mol2(file):
+    """
+    Obtain the geometry and partial charges from mol2 file.
+
+    Parameters:
+    -----------
+    file : str
+        Input file name
+
+    Returns
+    -------
+    DataFrame
+        The element symbols, mass, atom number and coordinates (in angstroms).
+
+    """
+    atoms = re.compile(r"""
+        ^\s+(?P<atid>\d+)\s+              # Atom serial number.
+        (?P<atsb>[A-Za-z]+)\d?\d?\s+      # Atom name.
+        (?P<x>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for X.
+        (?P<y>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for Y.
+        (?P<z>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for Z.
+        \w+\s+\d\s+\w+\s+
+        (?P<charge>[+-]?\d+\.\d+)         # Charges
+        """, re.X)
+
+    dat = list()
+    with open(file, "r", encoding="utf-8") as f:
+        for line in f:
+            if atoms.match(line):
+                m = atoms.match(line)
+                dat.append(m.groupdict())
+
+    dfatoms = pd.DataFrame(dat)
+
+    dfatoms = dfatoms.astype({
+        "x": np.float,
+        "y": np.float,
+        "z": np.float,
+        "charge": np.float,
+        "atid": np.integer})
+
+    # dfatoms = dfatoms.set_index('atid')
+
+    """ Adding mass """
+    dfatoms["mass"] = dfatoms["atsb"].apply(lambda at: Elements[at]["mass"])
+
+    """ Adding atnum """
+    dfatoms["num"] = dfatoms["atsb"].apply(lambda at: Elements[at]["num"])
+
+    return dfatoms
 
 
 class connectivity(nx.DiGraph):
@@ -248,6 +300,8 @@ class MOL:
         """Extract information from file."""
         if file.endswith("xyz"):
             MOL.dfatoms = load_xyz(file)
+        elif file.endswith("mol2"):
+            MOL.dfatoms = load_mol2(file)
         else:
             raise MoleculeDefintionError(0)
 

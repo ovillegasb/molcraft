@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "molcraft"
-version = "0.0.1"
+version = "0.0.2"
 description="Python utilities for working with molecular systems"
 readme = "README.md"
 requires-python = ">=3.10.4"
