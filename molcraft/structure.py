@@ -12,33 +12,7 @@ import numpy as np
 import networkx as nx
 import itertools as it
 from scipy.spatial.distance import cdist
-
-
-class MoleculeDefintionError(Exception):
-    """Define errors related to the definition of molecules."""
-
-    pass
-
-
-# types of files sopported
-typesfiles = ["xyz"]
-
-# Defining error messages
-_errorMessages = {
-    0: """
-    \033[1;31mMolecule format is not recognized,
-    files supported to date: {}
-    \033[m""".format(", ".join(typesfiles)),
-    1: """
-    \033[1;31mNo structures have been loaded yet.
-    \033[m""",
-    2: """
-    \033[1;31mATOM is not configured to work with the atom: {}
-    \033[m""",
-    3: """
-    \033[1;31mHybridation for {} - {} not found"
-    \033[m""",
-}
+from molcraft.exceptions import MoleculeDefintionError
 
 
 Elements = {  # g/mol
@@ -60,7 +34,7 @@ def load_xyz(file):
     Returns
     -------
     DataFrame
-        Atomic coordinates information
+        The element symbols, mass, atom number and coordinates (in angstroms).
 
     """
     coord = pd.read_csv(
@@ -76,6 +50,7 @@ def load_xyz(file):
     coord["num"] = coord["atsb"].apply(lambda at: Elements[at]["num"])
     # This file has no partial charges .
     coord["charge"] = 0.0
+
     return coord
 
 
@@ -180,6 +155,32 @@ class connectivity(nx.DiGraph):
                 self.edges[ai, aj]['dist'] = m
                 self.edges[aj, ai]['dist'] = m
 
+    def get_interactions_list(self):
+        """List of interactions are generated."""
+        all_length = dict(nx.algorithms.all_pairs_shortest_path_length(self))
+        all_paths = []
+
+        for s in all_length.keys():
+            for e in all_length[s].keys():
+                if all_length[s][e] == 1:
+                    all_paths += list(
+                        nx.algorithms.all_simple_paths(self, s, e, cutoff=1))
+                elif all_length[s][e] == 2:
+                    all_paths += list(
+                        nx.algorithms.all_simple_paths(self, s, e, cutoff=2))
+                elif all_length[s][e] == 3:
+                    all_paths += list(
+                        nx.algorithms.all_simple_paths(self, s, e, cutoff=3))
+
+        # print(list(nx.simple_cycles(self)))
+        # For cycles
+        # cycles = [cycle for cycle in nx.recursive_simple_cycles(mol.connect) if len(cycle) > 2]
+        # [mol.atoms[0].hyb for i in cycles[0]] hybridation
+        # [mol.atoms[0].atsb for i in cycles[0]] atoms symbols
+        # print(all_length)
+
+        return all_paths
+
 
 class MOL:
     """
@@ -206,7 +207,19 @@ class MOL:
     # Connectivity
     connect = connectivity()
 
-    def __init__(self, file=None):
+    # Bonds
+    bonds_list = []
+    dfbonds = pd.DataFrame()
+
+    # Angles
+    angles_list = []
+    dfangles = pd.DataFrame()
+
+    # Dihedrals
+    dihedrals_list = []
+    dfdih = pd.DataFrame()
+
+    def __init__(self, file=None, **kwargs):
         """
         Initialize the molecule.
 
@@ -229,14 +242,14 @@ class MOL:
         self.atoms_count = {"C": 0, "N": 0, "H": 0}
 
         if file:
-            self.load_file(file)
+            self.load_file(file, **kwargs)
 
     def load_file(self, file, res=None, connectivity=True):
         """Extract information from file."""
         if file.endswith("xyz"):
             MOL.dfatoms = load_xyz(file)
         else:
-            raise MoleculeDefintionError(_errorMessages[0])
+            raise MoleculeDefintionError(0)
 
         # RES name from file name
         if res:
@@ -251,8 +264,11 @@ class MOL:
         if connectivity:
             self._connectivity()
 
-        # Atoms information
-        self._get_atoms_info()
+            # Atoms information
+            self._get_atoms_info()
+
+            # Intramolecular information
+            self._intramol_list()
 
     @property
     def DBE(self):
@@ -284,8 +300,10 @@ class MOL:
         """Search connectivity."""
         if len(MOL.dfatoms) > 0:
             self._connectivity()
+            self._get_atoms_info()
+            self._intramol_list()
         else:
-            raise MoleculeDefintionError(_errorMessages[1])
+            raise MoleculeDefintionError(1)
 
     def _get_atoms_info(self):
         """Generate a composite list of class atom."""
@@ -293,6 +311,31 @@ class MOL:
             at = MOL.dfatoms.loc[i, "atsb"]
             atom = ATOM(at, i)
             MOL.atoms.append(atom)
+
+    def _intramol_list(self):
+        """Get intramolecular interactions."""
+        all_paths = self.connect.get_interactions_list()
+
+        # BONDS, list, types
+        bonds_list = [tuple(p) for p in all_paths if len(set(p)) == 2]
+        for iat, jat in bonds_list:
+            if iat < jat:
+                MOL.bonds_list.append((iat, jat))
+
+        # ANGLES, list, types
+        angles_list = [tuple(p) for p in all_paths if len(set(p)) == 3]
+        for iat, jat, kat in angles_list:
+            if iat < kat:
+                MOL.angles_list.append((iat, jat, kat))
+
+        # DIHEDRALS, list, types
+        dihedrals_list = [tuple(p) for p in all_paths if len(set(p)) == 4]
+        for iat, jat, kat, lat in dihedrals_list:
+            if iat < lat:
+                # Remove dihedrals -ca-ca-
+                # if MOL.dftypes.loc[jat, "type"] != "ca" and MOL.dftypes.loc[kat, "type"] != "ca":
+                #    MOL.dihedrals_list.append((iat, jat, kat, lat))
+                MOL.dihedrals_list.append((iat, jat, kat, lat))
 
 
 class ATOM(MOL):
@@ -347,9 +390,8 @@ class ATOM(MOL):
                     hyb_atoms_connect = "H" + hyb_atoms_connect
 
         else:
-            raise MoleculeDefintionError(_errorMessages[2].format(
+            raise MoleculeDefintionError(2).format(
                 MOL.dfatoms.loc[self.n, "atsb"])
-            )
 
         return hyb_atoms_connect
 
@@ -364,5 +406,5 @@ class ATOM(MOL):
         try:
             return atms_hyb[self.atsb][len(self.connect[self.n])]
         except KeyError:
-            raise MoleculeDefintionError(_errorMessages[3].format(
-                self.n, self.atsb))
+            raise MoleculeDefintionError(3).format(
+                self.n, self.atsb)
