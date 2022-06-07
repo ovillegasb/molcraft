@@ -106,6 +106,65 @@ def load_mol2(file):
     return dfatoms
 
 
+def load_pdb(file):
+    """
+    Obtain the geometry of the system from pdb file.
+
+    Parameters:
+    -----------
+    file : str
+        Input file name
+
+    Returns
+    -------
+    DataFrame
+        The element symbols, mass, atom number and coordinates (in angstroms).
+
+    dict
+        Connectivity.
+
+    """
+    coord = re.compile(r"""
+            \w+\s+
+            (?P<atid>\d+)\s+           # Atom id.
+            (?P<atsb>\w+)\s+           # Atomic number.
+            \w+\s+
+            \d+\s+
+            (?P<x>[+-]?\d+\.\d+)\s+    # Orthogonal coordinates for X.
+            (?P<y>[+-]?\d+\.\d+)\s+    # Orthogonal coordinates for Y.
+            (?P<z>[+-]?\d+\.\d+)\s+    # Orthogonal coordinates for Z.
+            """, re.X)
+
+    data = list()
+    ndx_conect = dict()
+    with open(file, 'r') as INPUT:
+        for line in INPUT:
+            if coord.match(line):
+                m = coord.match(line)
+                data.append(m.groupdict())
+
+            if "CONECT" in line:
+                """ ndx_conect"""
+                line = line.split()
+                if len(line) > 2:
+                    ndx_conect[int(line[1]) - 1] = [int(i) - 1 for i in line[2:]]
+
+    coord = pd.DataFrame(data)
+    coord = coord.astype({
+        'atid': np.int64,
+        'x': np.float64,
+        'y': np.float64,
+        'z': np.float64})
+    # coord = coord.set_index('atid')
+
+    coord["mass"] = coord["atsb"].apply(lambda at: Elements[at]["mass"])
+    coord["num"] = coord["atsb"].apply(lambda at: Elements[at]["num"])
+    # This file has no partial charges .
+    coord["charge"] = 0.0
+
+    return coord, ndx_conect
+
+
 class connectivity(nx.DiGraph):
     """Building a class connectivity from directed graphs."""
 
@@ -298,10 +357,13 @@ class MOL:
 
     def load_file(self, file, res=None, connectivity=True):
         """Extract information from file."""
+        connect = None
         if file.endswith("xyz"):
             MOL.dfatoms = load_xyz(file)
         elif file.endswith("mol2"):
             MOL.dfatoms = load_mol2(file)
+        elif file.endswith("pdb"):
+            MOL.dfatoms, connect = load_pdb(file)
         else:
             raise MoleculeDefintionError(0)
 
@@ -316,7 +378,11 @@ class MOL:
 
         # Search connectivity
         if connectivity:
-            self._connectivity()
+            if not connect:
+                self._connectivity()
+            else:
+                self.connect.define_atoms(MOL.dfatoms)
+                self.connect.read_dict(connect)
 
             # Atoms information
             self._get_atoms_info()

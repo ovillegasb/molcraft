@@ -13,7 +13,7 @@ class MoleculeDefintionError(Exception):
     def __init__(self, error_number):
         """Initialize the class by assinging a message."""
         # types of files sopported
-        typesfiles = ["xyz", "mol2"]
+        typesfiles = ["xyz", "pdb", "mol2"]
 
         # Defining error messages
         errorMessages = {
