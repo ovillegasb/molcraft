@@ -37,17 +37,34 @@ def load_xyz(file):
         The element symbols, mass, atom number and coordinates (in angstroms).
 
     """
-    coord = pd.read_csv(
-        file,
-        sep=r'\s+',
-        skiprows=2,
-        header=None,
-        names=['atsb', 'x', 'y', 'z'],
-        dtype={'x': np.float64, 'y': np.float64, 'z': np.float64}
-    )
+    # Regular expression that extracts matrix XYZ.
+    atoms = re.compile(r"""
+            ^\s+
+            (?P<atsb>[A-Za-z]+\d?\d?)\s+      # Atom name.
+            (?P<x>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for X.
+            (?P<y>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for Y.
+            (?P<z>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for Z.
+            """, re.X)
 
-    coord["mass"] = coord["atsb"].apply(lambda at: Elements[at]["mass"])
-    coord["num"] = coord["atsb"].apply(lambda at: Elements[at]["num"])
+    xyz = []
+    with open(file, "r") as XYZ:
+        for line in XYZ:
+            if atoms.match(line):
+                m = atoms.match(line)
+                xyz.append(m.groupdict())
+
+    coord = pd.DataFrame(xyz)
+    coord = coord.astype({
+        "x": np.float64,
+        "y": np.float64,
+        "z": np.float64
+    })
+
+    try:
+        coord["mass"] = coord["atsb"].apply(lambda at: Elements[at]["mass"])
+        coord["num"] = coord["atsb"].apply(lambda at: Elements[at]["num"])
+    except KeyError:
+        print("Careful! the atomic symbols present were not recognized.")
     # This file has no partial charges .
     coord["charge"] = 0.0
 

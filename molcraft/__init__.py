@@ -6,6 +6,6 @@ manipulate molecular systems in a simple way.
 
 """
 
-from molcraft import structure
+from molcraft import structure, clusters
 
-__all__ = ["structure"]
+__all__ = ["structure", "clusters"]
