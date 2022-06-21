@@ -22,14 +22,17 @@ Elements = {  # g/mol
 }
 
 
-def load_xyz(file):
+def load_xyz(file, warning=True):
     """
     Read a file xyz.
 
     Parameters
     ----------
     file : str
-        File path
+        File path.
+
+    warning : bool
+        Display or no warning when reading a file.
 
     Returns
     -------
@@ -64,7 +67,10 @@ def load_xyz(file):
         coord["mass"] = coord["atsb"].apply(lambda at: Elements[at]["mass"])
         coord["num"] = coord["atsb"].apply(lambda at: Elements[at]["num"])
     except KeyError:
-        print("Careful! the atomic symbols present were not recognized.")
+        if warning:
+            print("Careful! the atomic symbols present were not recognized.")
+        else:
+            pass
     # This file has no partial charges .
     coord["charge"] = 0.0
 
@@ -308,6 +314,29 @@ class connectivity(nx.DiGraph):
         # print(all_length)
 
         return all_paths
+
+    @property
+    def atomsMOL(self):
+        """
+        Indexes of atoms per molecule.
+
+        Property that returns a dictionary with molecule indices as key and
+        atom indices as values.
+
+        """
+        atoms_MOL = nx.weakly_connected_components(self)
+        # Dict imol : Natoms, indexs
+        bulk = dict()
+        ipol = 0
+
+        for mol in atoms_MOL:
+            mol = list(sorted(mol))
+            bulk[ipol] = dict()
+            bulk[ipol]["Natoms"] = len(mol)
+            bulk[ipol]["index"] = mol
+            ipol += 1
+
+        return bulk
 
 
 class MOL:
