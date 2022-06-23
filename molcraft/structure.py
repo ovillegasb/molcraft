@@ -338,6 +338,143 @@ class connectivity(nx.DiGraph):
 
         return bulk
 
+    def sub_connect(self, atoms):
+        """
+        Extract the connectivity for a particular group of atoms.
+
+        Parameters
+        ----------
+        atoms : list
+            List with the indices of the atoms.
+        """
+        return nx.subgraph(self, atoms)
+
+    @property
+    def connection_paths(self):
+        """
+        Atomic interconnection paths.
+
+        Used for a molecule, returns a dictionary with the connection pathways.
+        """
+        return dict(nx.shortest_path_length(self))
+
+    @property
+    def spine_atoms(self):
+        """
+        Longest path of connection between atoms.
+
+        This connection constitutes the backbone of the molecule, it is used to
+        reconstruct a molecule broken by periodic boundary conditions.
+        """
+        paths = self.connection_paths
+
+        length = 0
+        source = 0
+        target = 0
+
+        for i in paths:
+            for c in paths[i]:
+                # i : atom
+                # c : bond to
+                # pth[i][c] : length
+                if paths[i][c] > length:
+                    length = paths[i][c]
+                    source = i
+                    target = c
+
+        return nx.shortest_path(self, source, target)
+
+    def update_coordinates(self, coord):
+        """
+        Update atomic coordinates.
+
+        At the moment it is made to work with DataFrames. This is because in
+        the DataFrame the indices must correspond to the connectivity atoms.
+        """
+        if type(coord) == np.ndarray:
+            raise Exception("Be careful! you must use a DataFrame")
+
+        for n in self.nodes:
+            self.nodes[n]["xyz"] = coord.loc[n, ["x", "y", "z"]].values.astype(
+                np.float64)
+
+    def noPBC(self, box):
+        """
+        Reconstruct a molecule that is split due to PBC.
+
+        At the moment it is used in one molecule.
+
+        Parameters
+        ----------
+        box : numpy.array (3x1)
+            Vector with the length of the box.
+        """
+        spine_atoms = self.spine_atoms
+        ref_atoms = []
+        
+        # fisrt atoms in spine.
+        for at1 in spine_atoms:
+            for at2 in self[at1]:
+                if at2 not in ref_atoms and at2 in spine_atoms:
+                    r1 = self.nodes[at1]["xyz"]
+                    r2 = self.nodes[at2]["xyz"]
+                    d12 = distance(r1, r2)
+                    
+                    # guess definitions
+                    dmin = d12
+                    nr2 = np.array([])
+                    if not np.all(np.abs(r1 - r2) < box / 2):
+                        pbc = pbcboxs()
+                        for li, lj, lk in pbc:
+                            testr2 = r2 + box * np.array([li, lj, lk])
+                            if distance(r1, testr2) < dmin:
+                                dmin = distance(r1, testr2)
+                                nr2 = np.copy(testr2)
+
+                        self.nodes[at2]["xyz"] = nr2
+                        d12 = dmin
+                        self.edges[at1, at2]['dist'] = d12
+                        self.edges[at2, at1]['dist'] = d12
+
+            ref_atoms.append(at1)
+
+        # Then the rest of the atoms.
+        for at1 in self.nodes():
+            if at1 not in ref_atoms:
+                for at2 in self[at1]:
+                    r1 = self.nodes[at1]["xyz"]
+                    r2 = self.nodes[at2]["xyz"]
+                    d12 = distance(r1, r2)
+        
+                    # guess definitions
+                    dmin = d12
+                    nr = np.array([])
+                    if not np.all(np.abs(r1 - r2) < box / 2):
+                        pbc = pbcboxs()
+                        if at2 in ref_atoms:
+                            for li, lj, lk in pbc:
+                                testr1 = r1 + box * np.array([li, lj, lk])
+                                if distance(r2, testr1) < dmin:
+                                    dmin = distance(r2, testr1)
+                                    nr = np.copy(testr1)
+                                    
+                            self.nodes[at1]["xyz"] = nr
+        
+                        else:
+                            for li, lj, lk in pbc:
+                                testr2 = r2 + box * np.array([li, lj, lk])
+                                if distance(r1, testr2) < dmin:
+                                    dmin = distance(r1, testr2)
+                                    nr = np.copy(testr2)
+                                    
+                            self.nodes[at2]["xyz"] = nr
+                        
+                        d12 = dmin
+                        self.edges[at1, at2]['dist'] = d12
+                        self.edges[at2, at1]['dist'] = d12
+            else:
+                continue
+
 
 class MOL:
     """
@@ -574,3 +711,23 @@ class ATOM(MOL):
         except KeyError:
             raise MoleculeDefintionError(3).format(
                 self.n, self.atsb)
+
+
+def distance(v1, v2):
+    """
+    Compute the distance between two vectors.
+
+    Parameters
+    ----------
+    v1,v2 : numpy.array
+         Vector in space.
+    """
+    return np.linalg.norm(v1 - v2)
+
+
+def pbcboxs():
+    """Return a generator with periodical vectors."""
+    for i in [-1, 0, 1]:
+        for j in [-1, 0, 1]:
+            for k in [-1, 0, 1]:
+                yield (i, j, k)

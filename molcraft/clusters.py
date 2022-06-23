@@ -13,7 +13,7 @@ from scipy.spatial.distance import cdist
 class GyrationTensor:
     """Class to represent a Gyration Tensor and compute related quantities."""
 
-    def __init__(self, coords, masses, box):
+    def __init__(self, coords, masses, box, pbc=True):
         """
         Initialize calling coordinates, masses and box dimnetion.
 
@@ -27,27 +27,29 @@ class GyrationTensor:
         # Assuming cubic box
         self.box = box
 
+        self._pbc = pbc
+
         # Traslation using center of mass like reference poit
 
         newcoords = list()
         center_of_mass = self.center_of_mass
 
-        for i in coords:
-            r_i = list()
-            for j in range(len(i)):
-                if np.abs(i[j] - center_of_mass[j]) < self.box[j] / 2:
-                    # x position
-                    r_i.append(i[j])
-                elif np.abs(i[j] - self.box[j] - center_of_mass[j]) < self.box[j] / 2:
-                    # y position
-                    r_i.append(i[j] - self.box[j])
-                elif np.abs(i[j] + self.box[j] - center_of_mass[j]) < self.box[j] / 2:
-                    # z position
-                    r_i.append(i[j] + self.box[j])
-            newcoords.append(r_i)
-
-        newcoords = np.array(newcoords)
-        self.coords = newcoords
+        if pbc:
+            for i in coords:
+                r_i = list()
+                for j in range(len(i)):
+                    if np.abs(i[j] - center_of_mass[j]) < self.box[j] / 2:
+                        # x position
+                        r_i.append(i[j])
+                    elif np.abs(i[j] - self.box[j] - center_of_mass[j]) < self.box[j] / 2:
+                        # y position
+                        r_i.append(i[j] - self.box[j])
+                    elif np.abs(i[j] + self.box[j] - center_of_mass[j]) < self.box[j] / 2:
+                        # z position
+                        r_i.append(i[j] + self.box[j])
+                newcoords.append(r_i)
+            newcoords = np.array(newcoords)
+            self.coords = newcoords
 
         # weighted coords
         self.wcoords = self.coords * self.masses[:, np.newaxis]
@@ -55,16 +57,17 @@ class GyrationTensor:
     @property
     def center_of_mass(self):
         """Compute the center of mass, the mass weighterd barycenter."""
-        theta_i = self.coords / self.box * 2 * np.pi
+        if self._pbc:
+            theta_i = self.coords / self.box * 2 * np.pi
+            xi_i = np.cos(theta_i)
+            eta_i = np.sin(theta_i)
+            xi_m = np.sum(xi_i * self.masses[:, np.newaxis], axis=0) / self.masses.sum()
+            eta_m = np.sum(eta_i * self.masses[:, np.newaxis], axis=0) / self.masses.sum()
+            theta_m = np.arctan2(-eta_m, -xi_m) + np.pi
+            return self.box * theta_m / 2 / np.pi
 
-        xi_i = np.cos(theta_i)
-        eta_i = np.sin(theta_i)
-        xi_m = np.sum(xi_i * self.masses[:, np.newaxis], axis=0) / self.masses.sum()
-        eta_m = np.sum(eta_i * self.masses[:, np.newaxis], axis=0) / self.masses.sum()
-        theta_m = np.arctan2(-eta_m, -xi_m) + np.pi
-        # return self.wcoords.sum(axis=0) / self.masses.sum()
-
-        return self.box * theta_m / 2 / np.pi
+        else:
+            return np.sum(self.coords * self.masses[:, np.newaxis], axis=0) / self.masses.sum()
 
     @property
     def matrix(self):
