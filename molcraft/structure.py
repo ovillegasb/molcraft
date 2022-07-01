@@ -731,3 +731,31 @@ def pbcboxs():
         for j in [-1, 0, 1]:
             for k in [-1, 0, 1]:
                 yield (i, j, k)
+
+
+"""Functions for saving information."""
+
+
+def save_xyz(coord, name='file'):
+    """
+    Save an xyz file of coordinates.
+
+    Parameters:
+    -----------
+    coord : DataFrame
+
+    name : str
+
+    """
+    nat = len(coord)
+    xyz = "%s.xyz" % name
+    lines = ''
+    lines += '%d\n' % nat
+    lines += '%s\n' % name
+    for i in coord.index:
+        line = (coord.atsb[i], coord.x[i], coord.y[i], coord.z[i])
+        lines += '%3s%8.3f%8.3f%8.3f\n' % line
+    # writing all
+    with open(xyz, "w") as f:
+        f.write(lines)
+    print(f'Name of xyz file: {xyz}')
