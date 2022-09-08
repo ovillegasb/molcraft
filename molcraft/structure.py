@@ -18,7 +18,9 @@ from molcraft.exceptions import MoleculeDefintionError
 Elements = {  # g/mol
     'H': {'mass': 1.0080, 'num': 1},
     'C': {'mass': 12.011, 'num': 6},
-    'N': {'mass': 14.0067, 'num': 7}
+    'N': {'mass': 14.0067, 'num': 7},
+    'O': {'mass': 16.0000, 'num': 8}
+
 }
 
 
