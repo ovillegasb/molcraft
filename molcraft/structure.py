@@ -190,6 +190,18 @@ def load_pdb(file):
     return coord, ndx_conect
 
 
+def minImagenC(q1, q2, L):
+    """Return the one-dimensional distance using the minimun image criterion."""
+    dq = q2 - q1
+    if dq > L * 0.5:
+        dq -= L
+    
+    if dq <= -L * 0.5:
+        dq += L
+    
+    return dq
+
+
 class connectivity(nx.DiGraph):
     """Building a class connectivity from directed graphs."""
 
@@ -397,8 +409,10 @@ class connectivity(nx.DiGraph):
             raise Exception("Be careful! you must use a DataFrame")
 
         for n in self.nodes:
-            self.nodes[n]["xyz"] = coord.loc[n, ["x", "y", "z"]].values.astype(
-                np.float64)
+            try:
+                self.nodes[n]["xyz"] = coord.loc[n, ["x", "y", "z"]].values.astype(np.float64)
+            except KeyError:
+                pass
 
     def noPBC(self, box):
         """
@@ -414,66 +428,50 @@ class connectivity(nx.DiGraph):
         spine_atoms = self.spine_atoms
         ref_atoms = []
         
-        # fisrt atoms in spine.
+        # Fisrt atoms in spine.
+        # The molecule is rebuilt from the longest atom bond.
         for at1 in spine_atoms:
             for at2 in self[at1]:
                 if at2 not in ref_atoms and at2 in spine_atoms:
                     r1 = self.nodes[at1]["xyz"]
                     r2 = self.nodes[at2]["xyz"]
-                    d12 = distance(r1, r2)
-                    
-                    # guess definitions
-                    dmin = d12
-                    nr2 = np.array([])
-                    if not np.all(np.abs(r1 - r2) < box / 2):
-                        pbc = pbcboxs()
-                        for li, lj, lk in pbc:
-                            testr2 = r2 + box * np.array([li, lj, lk])
-                            if distance(r1, testr2) < dmin:
-                                dmin = distance(r1, testr2)
-                                nr2 = np.copy(testr2)
 
-                        self.nodes[at2]["xyz"] = nr2
-                        d12 = dmin
-                        self.edges[at1, at2]['dist'] = d12
-                        self.edges[at2, at1]['dist'] = d12
+                    # Assuming a system with 3D dimensions
+                    nr2 = np.zeros(3)
+                    for i in range(3):
+                        nr2[i] = minImagenC(r1[i], r2[i], box[i]) + r1[i]
+                    nd12 = distance(r1, nr2)
+                    self.nodes[at2]["xyz"] = nr2
+                    self.edges[at1, at2]['dist'] = nd12
+                    self.edges[at2, at1]['dist'] = nd12
 
             ref_atoms.append(at1)
 
         # Then the rest of the atoms.
+        # Using the longest bond of atoms, the complete molecule is
+        # reconstructed.
         for at1 in self.nodes():
             if at1 not in ref_atoms:
                 for at2 in self[at1]:
                     r1 = self.nodes[at1]["xyz"]
                     r2 = self.nodes[at2]["xyz"]
-                    d12 = distance(r1, r2)
-        
-                    # guess definitions
-                    dmin = d12
-                    nr = np.array([])
-                    if not np.all(np.abs(r1 - r2) < box / 2):
-                        pbc = pbcboxs()
-                        if at2 in ref_atoms:
-                            for li, lj, lk in pbc:
-                                testr1 = r1 + box * np.array([li, lj, lk])
-                                if distance(r2, testr1) < dmin:
-                                    dmin = distance(r2, testr1)
-                                    nr = np.copy(testr1)
-                                    
-                            self.nodes[at1]["xyz"] = nr
-        
-                        else:
-                            for li, lj, lk in pbc:
-                                testr2 = r2 + box * np.array([li, lj, lk])
-                                if distance(r1, testr2) < dmin:
-                                    dmin = distance(r1, testr2)
-                                    nr = np.copy(testr2)
-                                    
-                            self.nodes[at2]["xyz"] = nr
-                        
-                        d12 = dmin
-                        self.edges[at1, at2]['dist'] = d12
-                        self.edges[at2, at1]['dist'] = d12
+                    
+                    if at2 in ref_atoms:
+                        nr1 = np.zeros(3)
+                        for i in range(3):
+                            nr1[i] = minImagenC(r2[i], r1[i], box[i]) + r2[i]
+                        nd12 = distance(r2, nr1)
+                        self.nodes[at1]["xyz"] = nr1
+                    else:
+                        nr2 = np.zeros(3)
+                        for i in range(3):
+                            nr2[i] = minImagenC(r1[i], r2[i], box[i]) + r1[i]
+                        nd12 = distance(r1, nr2)
+                        self.nodes[at2]["xyz"] = nr2
+
+                    self.edges[at1, at2]['dist'] = nd12
+                    self.edges[at2, at1]['dist'] = nd12
+                    
             else:
                 continue
 
