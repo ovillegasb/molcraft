@@ -426,29 +426,33 @@ class connectivity(nx.DiGraph):
             Vector with the length of the box.
         """
         spine_atoms = self.spine_atoms
-        d_center = []
         if isinstance(center, np.ndarray):
-            # print("Hola")
-            # print(center)
-            # print("Posiciones de los atomos mas proximos")
-            # print(spine_atoms)
+            """Work
+            ri = self.nodes[spine_atoms[0]]["xyz"]
+            dri = distance(ri, center)
+
+            rf = self.nodes[spine_atoms[-1]]["xyz"]
+            drf = distance(rf, center)
+
+            if drf < dri:
+                spine_atoms = spine_atoms[::-1]
+            """
+            d_center = []
             for i in spine_atoms:
                 r = self.nodes[i]["xyz"]
-                # print(r)
-
                 d_center.append(distance(r, center))
-                # nr = np.array([minImagenC(center[j], q, box[j]) + center[j] for j, q in enumerate(r)])
-                # print(distance(nr, center))
 
-            # print(d_center)
-            # print(np.argsort(d_center))
-            # print([spine_atoms[j] for j in np.argsort(d_center)])
-            # print(spine_atoms[])
+            spine_at_center = [spine_atoms[j] for j in np.argsort(d_center)][0]
+            # spine_at_center = np.argsort(d_center)[0]
 
-            spine_atoms = [spine_atoms[j] for j in np.argsort(d_center)]
+            spine_1 = spine_atoms[0:spine_atoms.index(spine_at_center)+1][::-1]
+            spine_2 = spine_atoms[spine_atoms.index(spine_at_center):]
+            if len(spine_1) > len(spine_2):
+                spine_atoms = spine_1 + spine_2[1:]
+            else:
+                spine_atoms = spine_2 + spine_1[1:]
 
         ref_atoms = []
-        
         # Fisrt atoms in spine.
         # The molecule is rebuilt from the longest atom bond.
         for at1 in spine_atoms:
@@ -476,7 +480,7 @@ class connectivity(nx.DiGraph):
                 for at2 in self[at1]:
                     r1 = self.nodes[at1]["xyz"]
                     r2 = self.nodes[at2]["xyz"]
-                    
+
                     if at2 in ref_atoms:
                         nr1 = np.zeros(3)
                         for i in range(3):
@@ -492,7 +496,6 @@ class connectivity(nx.DiGraph):
 
                     self.edges[at1, at2]['dist'] = nd12
                     self.edges[at2, at1]['dist'] = nd12
-                    
             else:
                 continue
 
