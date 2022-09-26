@@ -414,7 +414,7 @@ class connectivity(nx.DiGraph):
             except KeyError:
                 pass
 
-    def noPBC(self, box):
+    def noPBC(self, box, center=None):
         """
         Reconstruct a molecule that is split due to PBC.
 
@@ -426,6 +426,27 @@ class connectivity(nx.DiGraph):
             Vector with the length of the box.
         """
         spine_atoms = self.spine_atoms
+        d_center = []
+        if isinstance(center, np.ndarray):
+            # print("Hola")
+            # print(center)
+            # print("Posiciones de los atomos mas proximos")
+            # print(spine_atoms)
+            for i in spine_atoms:
+                r = self.nodes[i]["xyz"]
+                # print(r)
+
+                d_center.append(distance(r, center))
+                # nr = np.array([minImagenC(center[j], q, box[j]) + center[j] for j, q in enumerate(r)])
+                # print(distance(nr, center))
+
+            # print(d_center)
+            # print(np.argsort(d_center))
+            # print([spine_atoms[j] for j in np.argsort(d_center)])
+            # print(spine_atoms[])
+
+            spine_atoms = [spine_atoms[j] for j in np.argsort(d_center)]
+
         ref_atoms = []
         
         # Fisrt atoms in spine.
