@@ -19,7 +19,7 @@ Elements = {  # g/mol
     'H': {'mass': 1.0080, 'num': 1},
     'C': {'mass': 12.011, 'num': 6},
     'N': {'mass': 14.0067, 'num': 7},
-    'O': {'mass': 16.0000, 'num': 8}
+    'O': {'mass': 15.999, 'num': 8}
 
 }
 
@@ -202,12 +202,27 @@ def minImagenC(q1, q2, L):
     return dq
 
 
+def change_atsb(x):
+    """Change atom types to simple symbols."""
+    if x in ["ca", "cb", "CT", "CM"]:
+        return "C"
+    elif x in ["ha", "ho", "HT", "HM"]:
+        return "H"
+    elif x in ["nf", "ne"]:
+        return "N"
+    elif x in ["oh"]:
+        return "O"
+
+
 class connectivity(nx.DiGraph):
     """Building a class connectivity from directed graphs."""
 
     def __init__(self):
         """Initiate with the superclass of graphs."""
         super().__init__()
+
+        # The system does not initialize with the masses of the atoms.
+        self._loaded_mass = False
 
     def get_connectivity(self, coord):
         """
@@ -248,8 +263,9 @@ class connectivity(nx.DiGraph):
         """Reset le count of node from 0 to new sizes nodes."""
         mapping = {value: count for count, value in enumerate(self.nodes, start=0)}
 
-        # return nx.relabel_nodes(self, mapping, copy=True)
-        self = nx.relabel_nodes(self, mapping, copy=True)
+        return nx.relabel_nodes(self, mapping, copy=True)
+        # self = nx.relabel_nodes(self, mapping, copy=True)
+        # REVISAR SI ES POSIBLE REGRESARSE A SI MISMO
 
     def nbonds(self, inode):
         """Return number of atoms in connected to iat."""
@@ -266,13 +282,23 @@ class connectivity(nx.DiGraph):
         indexs = list(self.nodes)
         rows = list()
 
-        for i in self.nodes:
-            rows.append({
-                'atsb': self.nodes[i]['atsb'],
-                'x': self.nodes[i]['xyz'][0],
-                'y': self.nodes[i]['xyz'][1],
-                'z': self.nodes[i]['xyz'][2]
-            })
+        if not self._loaded_mass:
+            for i in self.nodes:
+                rows.append({
+                    'atsb': self.nodes[i]['atsb'],
+                    'x': self.nodes[i]['xyz'][0],
+                    'y': self.nodes[i]['xyz'][1],
+                    'z': self.nodes[i]['xyz'][2]
+                })
+        else:
+            for i in self.nodes:
+                rows.append({
+                    'atsb': self.nodes[i]['atsb'],
+                    'x': self.nodes[i]['xyz'][0],
+                    'y': self.nodes[i]['xyz'][1],
+                    'z': self.nodes[i]['xyz'][2],
+                    'mass': self.nodes[i]['mass']
+                })
 
         df = pd.DataFrame(rows, index=indexs)
 
@@ -302,6 +328,27 @@ class connectivity(nx.DiGraph):
 
                 self.edges[ai, aj]['dist'] = m
                 self.edges[aj, ai]['dist'] = m
+
+    def add_new_at(self, n, m, vector, symbol):
+        """Add news atoms in the structure."""
+        self.add_node(
+            n,
+            xyz=vector,
+            atsb=symbol
+        )
+        if self._loaded_mass:
+            self.nodes[n]["mass"] = Elements[symbol]["mass"]
+        # adding connectivity
+        self.add_edge(n, m)
+        self.add_edge(m, n)
+        pos_i = self.nodes[n]['xyz']
+        pos_j = self.nodes[m]['xyz']
+
+        # save distance ij
+        d = np.linalg.norm(pos_j - pos_i)
+
+        self.edges[n, m]['dist'] = d
+        self.edges[m, n]['dist'] = d
 
     def get_interactions_list(self):
         """List of interactions are generated."""
@@ -498,6 +545,57 @@ class connectivity(nx.DiGraph):
                     self.edges[at2, at1]['dist'] = nd12
             else:
                 continue
+
+    def add_hydrogen(self, box, type_add="terminal", pbc=False):
+        """Add hydrogens to vacant atoms."""
+        """test
+        natoms = max(list(self.nodes))
+
+        atoms_map = self.atoms_map
+        open_c = []
+        for at in atoms_map:
+            atsb = self.nodes[at]["atsb"]
+            nbonds = self.nbonds(at)
+            print(at, atsb, nbonds, len(atoms_map[at]))
+            # if atsb == "C" and nbonds < 4:
+        """
+        natoms = max(list(self.nodes))
+        atoms_map = self.atoms_map
+        open_c = []
+        # Selecting terminal carbons
+        if type_add == "terminal":
+            spine = self.spine_atoms
+            for at in [spine[0], spine[-1]]:
+                atsb = self.nodes[at]["atsb"]
+                if atsb == "H":
+                    if self.nodes[atoms_map[at][0]]["atsb"] == "C":
+                        open_c.append(atoms_map[at][0])
+        # Add H
+        for at in open_c:
+            # Carbon coordinates
+            c = np.array(self.nodes[at]["xyz"], dtype=np.float64)
+            if self.nbonds(at) == 3:
+                # One bons is required.
+                hydrogens = list(self.neighbors(at))
+                h1 = np.array(self.nodes[hydrogens[0]]['xyz'], dtype=np.float64)
+                h2 = np.array(self.nodes[hydrogens[1]]['xyz'], dtype=np.float64)
+                h3 = np.array(self.nodes[hydrogens[2]]['xyz'], dtype=np.float64)
+
+                new_h = (c - h1) + (c - h2) + (c - h3) + c
+
+                # adding new atom H
+                self.add_new_at(natoms + 1, at, new_h, 'H')
+                natoms += 1
+
+    def simple_at_symbols(self, add_mass=False):
+        """Convert to simple atomic symbols."""
+        for at in self.nodes:
+            self.nodes[at]["atsb"] = change_atsb(self.nodes[at]["atsb"])
+            if add_mass:
+                self.nodes[at]["mass"] = Elements[self.nodes[at]["atsb"]]["mass"]
+
+        if add_mass:
+            self._loaded_mass = True
 
 
 class MOL:
