@@ -44,7 +44,7 @@ def load_xyz(file, warning=True):
     """
     # Regular expression that extracts matrix XYZ.
     atoms = re.compile(r"""
-            ^\s+
+            ^\s*
             (?P<atsb>[A-Za-z]+\d?\d?)\s+      # Atom name.
             (?P<x>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for X.
             (?P<y>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for Y.

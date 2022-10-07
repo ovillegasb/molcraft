@@ -1,9 +1,4 @@
-"""
-Modulo dedicado al analisis de aglomerados moleculares.
-
-Orlando
-
-"""
+"""Module dedicated to the analysis of molecular agglomerates."""
 
 import numpy as np
 from scipy.constants import N_A as avogadro
