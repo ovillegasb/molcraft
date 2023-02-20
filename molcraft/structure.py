@@ -24,7 +24,7 @@ Elements = {  # g/mol
 }
 
 
-def load_xyz(file, warning=True):
+def load_xyz(file, warning=False):
     """
     Read a file xyz.
 
@@ -443,7 +443,10 @@ class connectivity(nx.DiGraph):
                     source = i
                     target = c
 
-        return nx.shortest_path(self, source, target)
+        if length == 0:
+            return None
+        else:
+            return nx.shortest_path(self, source, target)
 
     def update_coordinates(self, coord):
         """
@@ -473,6 +476,9 @@ class connectivity(nx.DiGraph):
             Vector with the length of the box.
         """
         spine_atoms = self.spine_atoms
+        if spine_atoms is None:
+            return None
+
         if isinstance(center, np.ndarray):
             """Work
             ri = self.nodes[spine_atoms[0]]["xyz"]
@@ -592,7 +598,10 @@ class connectivity(nx.DiGraph):
         for at in self.nodes:
             self.nodes[at]["atsb"] = change_atsb(self.nodes[at]["atsb"])
             if add_mass:
-                self.nodes[at]["mass"] = Elements[self.nodes[at]["atsb"]]["mass"]
+                try:
+                    self.nodes[at]["mass"] = Elements[self.nodes[at]["atsb"]]["mass"]
+                except KeyError:
+                    self.nodes[at]["mass"] = 1.0
 
         if add_mass:
             self._loaded_mass = True
@@ -880,4 +889,3 @@ def save_xyz(coord, name='file'):
     # writing all
     with open(xyz, "w") as f:
         f.write(lines)
-    print(f'Name of xyz file: {xyz}')

@@ -18,13 +18,3 @@ It will also involve molecular trajectory analysis functions. Or functions that 
 
 ## Development
 
-## TODO
-
-- [ ] Working with mol2, gro and pdb extensions.
-- [ ] Add gaussian output file reading.
-- [ ] List of improper dihedrals.
-- [ ] Function that assigns OPLS AA atom types.
-- [ ] Extract aromatic cycles present in the molecule.
-
-### Done
-Not yet, step by step.
