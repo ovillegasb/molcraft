@@ -889,3 +889,41 @@ def save_xyz(coord, name='file'):
     # writing all
     with open(xyz, "w") as f:
         f.write(lines)
+
+
+def save_gro(coord, name, box, title="GRO FILE", time=0.0, out="."):
+    """
+    Save an gro file of coordinates.
+
+    Parameters:
+    -----------
+    coord : DataFrame
+
+    name : str
+
+    box = array(1x3)
+
+    """
+    nat = len(coord)
+    gro = name
+
+    GRO = open(f"{out}/{gro}.gro", "w", encoding="utf-8")
+    GRO.write("{}, t= {:.3f}\n".format(title, time))
+    GRO.write("%5d\n" % nat)
+
+    for i in coord.index:
+        GRO.write("{:>8}{:>7}{:5d}{:8.3f}{:8.3f}{:8.3f}\n".format(
+            str(coord.loc[i, "resid"]) + coord.loc[i, "resname"],
+            coord.loc[i, "atsb"],
+            i + 1,
+            coord.loc[i, "x"] * 0.1 + box[0] / 20,
+            coord.loc[i, "y"] * 0.1 + box[1] / 20,
+            coord.loc[i, "z"] * 0.1 + box[2] / 20)
+        )
+
+    GRO.write("   {:.5f}   {:.5f}   {:.5f}\n".format(
+        box[0] / 10,
+        box[1] / 10,
+        box[2] / 10))
+
+    GRO.close()
