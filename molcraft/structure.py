@@ -202,16 +202,33 @@ def minImagenC(q1, q2, L):
     return dq
 
 
+def vector_PBC(r1, r2, box):
+    """Calculate the difference between two vectors using a period condition.."""
+    # Assuming a system with 3D dimensions
+    # Direction: r1--->r2 = r2 - r1
+    nr2 = np.zeros(3)
+    for i in range(3):
+        nr2[i] = minImagenC(r1[i], r2[i], box[i]) + r1[i]
+    # nd12 = distance(r1, nr2)
+
+    return nr2
+
+
 def change_atsb(x):
     """Change atom types to simple symbols."""
-    if x in ["ca", "cb", "CT", "CM"]:
+    if x in ["ca", "cb", "CT", "CM", "C"]:
         return "C"
-    elif x in ["ha", "ho", "HT", "HM"]:
+    elif x in ["ha", "ho", "HT", "HM", "H"]:
         return "H"
-    elif x in ["nf", "ne"]:
+    elif x in ["nf", "ne", "N"]:
         return "N"
-    elif x in ["oh"]:
+    elif x in ["oh", "O"]:
         return "O"
+    elif x in ["DU"]:
+        return "DU"
+    else:
+        print(f"WARNING: {x} atom not reconize.")
+        return x
 
 
 class connectivity(nx.DiGraph):
@@ -282,23 +299,8 @@ class connectivity(nx.DiGraph):
         indexs = list(self.nodes)
         rows = list()
 
-        if not self._loaded_mass:
-            for i in self.nodes:
-                rows.append({
-                    'atsb': self.nodes[i]['atsb'],
-                    'x': self.nodes[i]['xyz'][0],
-                    'y': self.nodes[i]['xyz'][1],
-                    'z': self.nodes[i]['xyz'][2]
-                })
-        else:
-            for i in self.nodes:
-                rows.append({
-                    'atsb': self.nodes[i]['atsb'],
-                    'x': self.nodes[i]['xyz'][0],
-                    'y': self.nodes[i]['xyz'][1],
-                    'z': self.nodes[i]['xyz'][2],
-                    'mass': self.nodes[i]['mass']
-                })
+        for i in self.nodes:
+            rows.append(self.nodes[i])
 
         df = pd.DataFrame(rows, index=indexs)
 
@@ -307,11 +309,10 @@ class connectivity(nx.DiGraph):
     def define_atoms(self, coord):
         """Define the atoms of the system like nodes."""
         for i in coord.index:
-            self.add_node(
-                i,
-                xyz=coord.loc[i, ['x', 'y', 'z']].values,
-                atsb=coord.loc[i, 'atsb']
-            )
+            # print(coord.loc[i, :].to_dict())
+
+            row = coord.loc[i, :].to_dict()
+            self.add_node(i, **row)
 
     def read_dict(self, connect):
         """Read connectivity from a dictionary."""
@@ -320,8 +321,17 @@ class connectivity(nx.DiGraph):
             for ai, aj in it.product([i], connect[i]):
                 self.add_edge(ai, aj)
                 self.add_edge(aj, ai)
-                pos_i = self.nodes[ai]['xyz']
-                pos_j = self.nodes[aj]['xyz']
+                pos_i = np.array([
+                    self.nodes[ai]['x'],
+                    self.nodes[ai]['y'],
+                    self.nodes[ai]['z']
+                    ])
+
+                pos_j = np.array([
+                    self.nodes[aj]['x'],
+                    self.nodes[aj]['y'],
+                    self.nodes[aj]['z']
+                    ])
 
                 # save distance ij
                 m = np.linalg.norm(pos_j - pos_i)
@@ -329,20 +339,33 @@ class connectivity(nx.DiGraph):
                 self.edges[ai, aj]['dist'] = m
                 self.edges[aj, ai]['dist'] = m
 
-    def add_new_at(self, n, m, vector, symbol):
+    def add_new_at(self, n, m, vector, symbol, **kwargs):
         """Add news atoms in the structure."""
         self.add_node(
             n,
-            xyz=vector,
-            atsb=symbol
+            x=vector[0],
+            y=vector[1],
+            z=vector[2],
+            atsb=symbol,
+            **kwargs
         )
         if self._loaded_mass:
             self.nodes[n]["mass"] = Elements[symbol]["mass"]
         # adding connectivity
         self.add_edge(n, m)
         self.add_edge(m, n)
-        pos_i = self.nodes[n]['xyz']
-        pos_j = self.nodes[m]['xyz']
+
+        pos_i = np.array([
+                self.nodes[n]['x'],
+                self.nodes[n]['y'],
+                self.nodes[n]['z']
+            ])
+
+        pos_j = np.array([
+                self.nodes[m]['x'],
+                self.nodes[m]['y'],
+                self.nodes[m]['z']
+            ])
 
         # save distance ij
         d = np.linalg.norm(pos_j - pos_i)
@@ -460,7 +483,9 @@ class connectivity(nx.DiGraph):
 
         for n in self.nodes:
             try:
-                self.nodes[n]["xyz"] = coord.loc[n, ["x", "y", "z"]].values.astype(np.float64)
+                self.nodes[n]["x"] = coord.loc[n, "x"]
+                self.nodes[n]["y"] = coord.loc[n, "y"]
+                self.nodes[n]["z"] = coord.loc[n, "z"]
             except KeyError:
                 pass
 
@@ -492,7 +517,12 @@ class connectivity(nx.DiGraph):
             """
             d_center = []
             for i in spine_atoms:
-                r = self.nodes[i]["xyz"]
+                r = np.array([
+                    self.nodes[i]['x'],
+                    self.nodes[i]['y'],
+                    self.nodes[i]['z']
+                ])
+
                 d_center.append(distance(r, center))
 
             spine_at_center = [spine_atoms[j] for j in np.argsort(d_center)][0]
@@ -511,15 +541,26 @@ class connectivity(nx.DiGraph):
         for at1 in spine_atoms:
             for at2 in self[at1]:
                 if at2 not in ref_atoms and at2 in spine_atoms:
-                    r1 = self.nodes[at1]["xyz"]
-                    r2 = self.nodes[at2]["xyz"]
+                    r1 = np.array([
+                        self.nodes[at1]['x'],
+                        self.nodes[at1]['y'],
+                        self.nodes[at1]['z']
+                    ])
+
+                    r2 = np.array([
+                        self.nodes[at2]['x'],
+                        self.nodes[at2]['y'],
+                        self.nodes[at2]['z']
+                    ])
 
                     # Assuming a system with 3D dimensions
                     nr2 = np.zeros(3)
                     for i in range(3):
                         nr2[i] = minImagenC(r1[i], r2[i], box[i]) + r1[i]
                     nd12 = distance(r1, nr2)
-                    self.nodes[at2]["xyz"] = nr2
+                    self.nodes[at2]["x"] = nr2[0]
+                    self.nodes[at2]["y"] = nr2[1]
+                    self.nodes[at2]["z"] = nr2[2]
                     self.edges[at1, at2]['dist'] = nd12
                     self.edges[at2, at1]['dist'] = nd12
 
@@ -531,28 +572,69 @@ class connectivity(nx.DiGraph):
         for at1 in self.nodes():
             if at1 not in ref_atoms:
                 for at2 in self[at1]:
-                    r1 = self.nodes[at1]["xyz"]
-                    r2 = self.nodes[at2]["xyz"]
+                    r1 = np.array([
+                        self.nodes[at1]['x'],
+                        self.nodes[at1]['y'],
+                        self.nodes[at1]['z']
+                    ])
+
+                    r2 = np.array([
+                        self.nodes[at2]['x'],
+                        self.nodes[at2]['y'],
+                        self.nodes[at2]['z']
+                    ])
 
                     if at2 in ref_atoms:
                         nr1 = np.zeros(3)
                         for i in range(3):
                             nr1[i] = minImagenC(r2[i], r1[i], box[i]) + r2[i]
                         nd12 = distance(r2, nr1)
-                        self.nodes[at1]["xyz"] = nr1
+                        self.nodes[at1]["x"] = nr1[0]
+                        self.nodes[at1]["y"] = nr1[1]
+                        self.nodes[at1]["z"] = nr1[2]
                     else:
                         nr2 = np.zeros(3)
                         for i in range(3):
                             nr2[i] = minImagenC(r1[i], r2[i], box[i]) + r1[i]
                         nd12 = distance(r1, nr2)
-                        self.nodes[at2]["xyz"] = nr2
+                        self.nodes[at2]["x"] = nr2[0]
+                        self.nodes[at2]["y"] = nr2[1]
+                        self.nodes[at2]["z"] = nr2[2]
 
                     self.edges[at1, at2]['dist'] = nd12
                     self.edges[at2, at1]['dist'] = nd12
             else:
                 continue
 
-    def add_hydrogen(self, box, type_add="terminal", pbc=False):
+    def addPBC(self, box, center):
+        """Add periodic boundary condition to the system."""
+        # It goes around each atom and reintroduces into the box the atoms
+        # that are outside.
+
+        for at in self.nodes():
+            r = np.array([
+                    self.nodes[at]['x'],
+                    self.nodes[at]['y'],
+                    self.nodes[at]['z']
+                ])
+            nr = np.zeros(3)
+
+            for i in range(3):
+                ### nr[i] = minImagenC(center[i], r[i], box[i]) + r[i]
+                ### nr[i] = minImagenC((box[i] - center[i]) / 2, r[i], box[i]) + r[i]
+                if r[i] < 0.0:
+                    nr[i] = r[i] + box[i]
+                elif r[i] > box[i]:
+                    nr[i] = r[i] - box[i]
+                else:
+                    nr[i] = r[i]
+
+            # nd12 = distance(r, nr2)
+            self.nodes[at]["x"] = nr[0]
+            self.nodes[at]["y"] = nr[1]
+            self.nodes[at]["z"] = nr[2]
+
+    def add_hydrogen(self, type_add="terminal", pbc=False, box=None, **kwargs):
         """Add hydrogens to vacant atoms."""
         """test
         natoms = max(list(self.nodes))
@@ -579,18 +661,41 @@ class connectivity(nx.DiGraph):
         # Add H
         for at in open_c:
             # Carbon coordinates
-            c = np.array(self.nodes[at]["xyz"], dtype=np.float64)
+            c = np.array([
+                    self.nodes[at]['x'],
+                    self.nodes[at]['y'],
+                    self.nodes[at]['z']
+                ])
             if self.nbonds(at) == 3:
                 # One bons is required.
                 hydrogens = list(self.neighbors(at))
-                h1 = np.array(self.nodes[hydrogens[0]]['xyz'], dtype=np.float64)
-                h2 = np.array(self.nodes[hydrogens[1]]['xyz'], dtype=np.float64)
-                h3 = np.array(self.nodes[hydrogens[2]]['xyz'], dtype=np.float64)
+                h1 = np.array([
+                    self.nodes[hydrogens[0]]['x'],
+                    self.nodes[hydrogens[0]]['y'],
+                    self.nodes[hydrogens[0]]['z']
+                ])
+                
+                h2 = np.array([
+                    self.nodes[hydrogens[1]]['x'],
+                    self.nodes[hydrogens[1]]['y'],
+                    self.nodes[hydrogens[1]]['z']
+                ])
+                
+                h3 = np.array([
+                    self.nodes[hydrogens[2]]['x'],
+                    self.nodes[hydrogens[2]]['y'],
+                    self.nodes[hydrogens[2]]['z']
+                ])
 
-                new_h = (c - h1) + (c - h2) + (c - h3) + c
+                if pbc:
+                    # Adding correction for PBC
+                    new_h = (vector_PBC(h1, c, box)) + (vector_PBC(h2, c, box)) + (vector_PBC(h3, c, box))
+                    new_h += c   # vector_PBC(-c, new_h, box)
+                else:
+                    new_h = (c - h1) + (c - h2) + (c - h3) + c
 
                 # adding new atom H
-                self.add_new_at(natoms + 1, at, new_h, 'H')
+                self.add_new_at(natoms + 1, at, new_h, 'H', **kwargs)
                 natoms += 1
 
     def simple_at_symbols(self, add_mass=False):
@@ -605,6 +710,35 @@ class connectivity(nx.DiGraph):
 
         if add_mass:
             self._loaded_mass = True
+
+    @property
+    def natoms(self):
+        """Total number of atoms."""
+        return len(self.nodes())
+
+    @property
+    def nbonds_total(self):
+        """Total number of bonds in the system."""
+        return len(self.edges())
+
+    def add_residue(self, mol):
+        """Add a molecule to the system."""
+        natoms_init = self.natoms
+        # Add news atoms in the structure.
+        for at in mol.nodes:
+            self.add_node(
+                at + natoms_init,
+                **mol.nodes[at]
+            )
+
+        # adding connectivity
+        if mol.nbonds_total > 0:
+            for i, j in mol.edges:
+                self.add_edge(
+                    i + natoms_init,
+                    j + natoms_init,
+                    **mol.edges[i, j]
+                )
 
 
 class MOL:
@@ -878,8 +1012,11 @@ def save_xyz(coord, name='file'):
     name : str
 
     """
+
+    if not name.endswith(".xyz"):
+        xyz = "%s.xyz" % name
+
     nat = len(coord)
-    xyz = "%s.xyz" % name
     lines = ''
     lines += '%d\n' % nat
     lines += '%s\n' % name
