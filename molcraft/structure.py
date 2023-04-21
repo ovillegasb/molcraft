@@ -241,6 +241,11 @@ class connectivity(nx.DiGraph):
         # The system does not initialize with the masses of the atoms.
         self._loaded_mass = False
 
+        # List of modified atoms
+        # Par example:
+        #  New bond
+        self.modified_atoms = []
+
     def get_connectivity(self, coord):
         """
         Build connectivity from coordinates using nodes like atoms.
@@ -696,6 +701,8 @@ class connectivity(nx.DiGraph):
 
                 # adding new atom H
                 self.add_new_at(natoms + 1, at, new_h, 'H', **kwargs)
+                self.nodes[at]["charge"] = -0.180
+                self.modified_atoms.append(at)
                 natoms += 1
 
     def simple_at_symbols(self, add_mass=False):
@@ -730,6 +737,8 @@ class connectivity(nx.DiGraph):
                 at + natoms_init,
                 **mol.nodes[at]
             )
+            if at in mol.modified_atoms:
+                self.modified_atoms.append(at + natoms_init)
 
         # adding connectivity
         if mol.nbonds_total > 0:
