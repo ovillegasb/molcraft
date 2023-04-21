@@ -244,7 +244,7 @@ class connectivity(nx.DiGraph):
         # List of modified atoms
         # Par example:
         #  New bond
-        self.modified_atoms = []
+        self.modified_atoms = {}
 
     def get_connectivity(self, coord):
         """
@@ -702,7 +702,15 @@ class connectivity(nx.DiGraph):
                 # adding new atom H
                 self.add_new_at(natoms + 1, at, new_h, 'H', **kwargs)
                 self.nodes[at]["charge"] = -0.180
-                self.modified_atoms.append(at)
+                self.nodes[at]["atypes"] = "C3H"
+                self.modified_atoms[at] = {
+                    "nom": "C3H",
+                    "nomXYZ": "C",
+                    "nomFF": "CT",
+                    "type": "Atome",
+                    "masse": "1.2011000000e-02 kg/mol",
+                    "charge": "-1.8000000000e-01"
+                }
                 natoms += 1
 
     def simple_at_symbols(self, add_mass=False):
@@ -738,7 +746,7 @@ class connectivity(nx.DiGraph):
                 **mol.nodes[at]
             )
             if at in mol.modified_atoms:
-                self.modified_atoms.append(at + natoms_init)
+                self.modified_atoms[at + natoms_init] = mol.modified_atoms[at]
 
         # adding connectivity
         if mol.nbonds_total > 0:
