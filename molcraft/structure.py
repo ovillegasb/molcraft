@@ -10,9 +10,12 @@ MOL and ATOM.
 import re
 import pandas as pd
 import numpy as np
+import numpy.linalg as LA
+from numpy import random
 import networkx as nx
 import itertools as it
 from scipy.spatial.distance import cdist
+from scipy.spatial.transform import Rotation as R
 from molcraft.exceptions import MoleculeDefintionError
 
 Elements = {  # g/mol
@@ -639,7 +642,81 @@ class connectivity(nx.DiGraph):
             self.nodes[at]["y"] = nr[1]
             self.nodes[at]["z"] = nr[2]
 
-    def add_hydrogen(self, type_add="terminal", pbc=False, box=None, **kwargs):
+    @property
+    def open_c(self):
+        """List of vacant carbons in the molecule."""
+        spine = self.spine_atoms
+        atoms_map = self.atoms_map
+        open_c = []
+        for at in [spine[0], spine[-1]]:
+            atsb = self.nodes[at]["atsb"]
+            if atsb == "H":
+                if self.nodes[atoms_map[at][0]]["atsb"] == "C":
+                    open_c.append(atoms_map[at][0])
+
+        return open_c
+
+    @property
+    def oxygens(self):
+        """List of oxygens vacant in the molecule."""
+        atoms_map = self.atoms_map
+        open_o = []
+        for at in self.nodes:
+            atsb = self.nodes[at]["atsb"]
+            if atsb == "O":
+                if len(atoms_map[at]) < 2:
+                    open_o.append(at)
+
+        return open_o
+
+    def _new_coord_from(self, type_to_add, index, box=[], pbc=None):
+        """Determine the new geometric position."""
+        new_pos = np.zeros(3)
+
+        if type_to_add == "terminal-C":
+            # Tetrahedron, carbon sp3
+            # Carbon coordinates
+            c = np.array([
+                    self.nodes[index]['x'],
+                    self.nodes[index]['y'],
+                    self.nodes[index]['z']
+                ])
+
+            if self.nbonds(index) == 3:
+                # One bons is required.
+                atomsNeighbors = list(self.neighbors(index))
+                at1 = np.array([
+                    self.nodes[atomsNeighbors[0]]['x'],
+                    self.nodes[atomsNeighbors[0]]['y'],
+                    self.nodes[atomsNeighbors[0]]['z']
+                ])
+                
+                at2 = np.array([
+                    self.nodes[atomsNeighbors[1]]['x'],
+                    self.nodes[atomsNeighbors[1]]['y'],
+                    self.nodes[atomsNeighbors[1]]['z']
+                ])
+                
+                at3 = np.array([
+                    self.nodes[atomsNeighbors[2]]['x'],
+                    self.nodes[atomsNeighbors[2]]['y'],
+                    self.nodes[atomsNeighbors[2]]['z']
+                ])
+            else:
+                print("This carbon is missing more than one bond, this method\
+                    only works with carbons that are missing one bond.")
+                exit()
+
+            if pbc:
+                # Adding correction for PBC
+                new_at = (vector_PBC(at1, c, box)) + (vector_PBC(at2, c, box)) + (vector_PBC(at3, c, box))
+                new_at += c   # vector_PBC(-c, new_at, box)
+            else:
+                new_pos = (c - at1) + (c - at2) + (c - at3) + c
+
+        return new_pos
+
+    def add_hydrogen(self, type_add="terminal-C", pbc=False, box=None, **kwargs):
         """Add hydrogens to vacant atoms."""
         """test
         natoms = max(list(self.nodes))
@@ -653,54 +730,17 @@ class connectivity(nx.DiGraph):
             # if atsb == "C" and nbonds < 4:
         """
         natoms = max(list(self.nodes))
-        atoms_map = self.atoms_map
-        open_c = []
-        # Selecting terminal carbons
-        if type_add == "terminal":
-            spine = self.spine_atoms
-            for at in [spine[0], spine[-1]]:
-                atsb = self.nodes[at]["atsb"]
-                if atsb == "H":
-                    if self.nodes[atoms_map[at][0]]["atsb"] == "C":
-                        open_c.append(atoms_map[at][0])
-        # Add H
-        for at in open_c:
-            # Carbon coordinates
-            c = np.array([
-                    self.nodes[at]['x'],
-                    self.nodes[at]['y'],
-                    self.nodes[at]['z']
-                ])
-            if self.nbonds(at) == 3:
-                # One bons is required.
-                hydrogens = list(self.neighbors(at))
-                h1 = np.array([
-                    self.nodes[hydrogens[0]]['x'],
-                    self.nodes[hydrogens[0]]['y'],
-                    self.nodes[hydrogens[0]]['z']
-                ])
-                
-                h2 = np.array([
-                    self.nodes[hydrogens[1]]['x'],
-                    self.nodes[hydrogens[1]]['y'],
-                    self.nodes[hydrogens[1]]['z']
-                ])
-                
-                h3 = np.array([
-                    self.nodes[hydrogens[2]]['x'],
-                    self.nodes[hydrogens[2]]['y'],
-                    self.nodes[hydrogens[2]]['z']
-                ])
 
-                if pbc:
-                    # Adding correction for PBC
-                    new_h = (vector_PBC(h1, c, box)) + (vector_PBC(h2, c, box)) + (vector_PBC(h3, c, box))
-                    new_h += c   # vector_PBC(-c, new_h, box)
-                else:
-                    new_h = (c - h1) + (c - h2) + (c - h3) + c
+        if type_add == "terminal-C":
+            # Selecting terminal carbons
+            atoms_ref = self.open_c
 
+            # Add H
+            for at in atoms_ref:
                 # adding new atom H
+                new_h = self._new_coord_from(type_to_add="terminal-C", index=at)
                 self.add_new_at(natoms + 1, at, new_h, 'H', **kwargs)
+                # Change atom type
                 self.nodes[at]["charge"] = -0.180
                 self.nodes[at]["atypes"] = "C3H"
                 self.modified_atoms[at] = {
@@ -709,9 +749,122 @@ class connectivity(nx.DiGraph):
                     "nomFF": "CT",
                     "type": "Atome",
                     "masse": "1.2011000000e-02 kg/mol",
-                    "charge": "-1.8000000000e-01"
+                    "charge": "-0.180 e-"
                 }
                 natoms += 1
+
+        elif type_add == "OH":
+            # Selecting oxygen in the system
+            atoms_ref = self.oxygens
+
+            # ref distance
+            dOH = 0.945  # angs
+            dCO = 1.410  # ang
+            thCOH = 108.5  # deg
+
+            # Add new H
+            for at in atoms_ref:
+                atomsNeighbors = list(self.neighbors(at))
+                # oxygen coordinates
+                ox = np.array([
+                    self.nodes[at]['x'],
+                    self.nodes[at]['y'],
+                    self.nodes[at]['z']
+                ])
+
+                # Carbon connected
+                c = np.array([
+                    self.nodes[atomsNeighbors[0]]['x'],
+                    self.nodes[atomsNeighbors[0]]['y'],
+                    self.nodes[atomsNeighbors[0]]['z']
+                ])
+
+                # compute the coordinate hydrogen randomly
+                oc_vec = c - ox
+                oc_u = oc_vec / LA.norm(oc_vec)
+                k_vec = np.array([0, 0, 1])
+
+                # ramdom insertion of H
+                phi = random.choice(np.linspace(0, 2 * np.pi, 1000))
+                # phi = 0
+                theta = np.deg2rad(thCOH)
+
+                dx = dOH * np.cos(phi) * np.sin(theta)
+                dy = dOH * np.sin(phi) * np.sin(theta)
+                dz = dOH * np.cos(theta)
+
+                oh_vec = np.array([dx, dy, dz])
+                    
+                angle = np.arccos(np.dot(k_vec, oc_u))
+                axis = np.cross(k_vec, oc_u)
+                axis /= np.linalg.norm(axis)
+
+                # Crear objeto Rotation
+                r = R.from_rotvec(angle * axis)
+                oh_vec_rot = r.apply(oh_vec)
+
+                h = oh_vec_rot + ox
+                
+                self.add_new_at(natoms + 1, at, h, 'H', **kwargs)
+                self.modified_atoms[natoms + 1] = {
+                    "nom": "HO",
+                    "nomXYZ": "H",
+                    "nomFF": "HO",
+                    "type": "Atome",
+                    "masse": "1.008e-03 kg/mol",
+                    "charge": "0.418 e-"
+                }
+                natoms += 1
+        
+    def add_OH(self, type_add="terminal", pbc=False, box=None, **kwargs):
+        """Add OH to vacant atoms."""
+        natoms = max(list(self.nodes))
+
+        # Selecting terminal carbons
+        if type_add == "terminal-C":
+            atoms_ref = self.open_c
+
+        # Add O
+        for at in atoms_ref:
+            atomsNeighbors = list(self.neighbors(at))
+            # adding new atom O
+            new_O = self._new_coord_from(type_to_add="terminal-C", index=at)
+            self.add_new_at(natoms + 1, at, new_O, 'O', **kwargs)
+            self.modified_atoms[natoms + 1] = {
+                "nom": "OH",
+                "nomXYZ": "O",
+                "nomFF": "OH",
+                "type": "Atome",
+                "masse": "1.6000000e-02 kg/mol",
+                "charge": "-0.683 e-"
+            }
+            # Neighboring atoms change type too
+            # For carbon
+            self.nodes[at]["charge"] = 0.145
+            self.nodes[at]["atypes"] = "CTO"
+            self.modified_atoms[at] = {
+                "nom": "CTO",
+                "nomXYZ": "C",
+                "nomFF": "CT",
+                "type": "Atome",
+                "masse": "1.2011000000e-02 kg/mol",
+                "charge": "0.145 e-"
+            }
+
+            # For hydrogens connected to C--oxygen
+            for atj in atomsNeighbors:
+                if self.nodes[atj]["atypes"] == "HT":
+                    self.nodes[atj]["charge"] = 0.040
+                    self.nodes[atj]["atypes"] = "H1O"
+                    self.modified_atoms[atj] = {
+                        "nom": "H1O",
+                        "nomXYZ": "H",
+                        "nomFF": "HT",
+                        "type": "Atome",
+                        "masse": "1.008e-03 kg/mol",
+                        "charge": "0.040 e-"
+                    }
+            natoms += 1
 
     def simple_at_symbols(self, add_mass=False):
         """Convert to simple atomic symbols."""
