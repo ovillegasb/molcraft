@@ -807,9 +807,9 @@ class connectivity(nx.DiGraph):
                 
                 self.add_new_at(natoms + 1, at, h, 'H', **kwargs)
                 self.modified_atoms[natoms + 1] = {
-                    "nom": "HO",
+                    "nom": "HOopls",
                     "nomXYZ": "H",
-                    "nomFF": "HO",
+                    "nomFF": "HOopls",
                     "type": "Atome",
                     "masse": "1.008e-03 kg/mol",
                     "charge": "0.418 e-"
@@ -831,9 +831,9 @@ class connectivity(nx.DiGraph):
             new_O = self._new_coord_from(type_to_add="terminal-C", index=at)
             self.add_new_at(natoms + 1, at, new_O, 'O', **kwargs)
             self.modified_atoms[natoms + 1] = {
-                "nom": "OH",
+                "nom": "OHopls",
                 "nomXYZ": "O",
-                "nomFF": "OH",
+                "nomFF": "OHopls",
                 "type": "Atome",
                 "masse": "1.6000000e-02 kg/mol",
                 "charge": "-0.683 e-"
@@ -854,7 +854,7 @@ class connectivity(nx.DiGraph):
             # For hydrogens connected to C--oxygen
             for atj in atomsNeighbors:
                 if self.nodes[atj]["atypes"] == "HT":
-                    self.nodes[atj]["charge"] = 0.040
+                    self.nodes[atj]["charge"] = 0.060  # 0.040
                     self.nodes[atj]["atypes"] = "H1O"
                     self.modified_atoms[atj] = {
                         "nom": "H1O",
@@ -862,7 +862,7 @@ class connectivity(nx.DiGraph):
                         "nomFF": "HT",
                         "type": "Atome",
                         "masse": "1.008e-03 kg/mol",
-                        "charge": "0.040 e-"
+                        "charge": "0.060 e-"  # 0.040
                     }
             natoms += 1
 
