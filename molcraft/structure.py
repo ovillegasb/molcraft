@@ -324,6 +324,12 @@ class connectivity(nx.DiGraph):
 
     def read_dict(self, connect):
         """Read connectivity from a dictionary."""
+        if len(connect) != len(self.nodes):
+            print(
+                "\nAn error occurred\n",
+                "The number of atoms read in the topology are not the same in the connectivity")
+            exit()
+
         # Add edges like bonds
         for i in connect:
             for ai, aj in it.product([i], connect[i]):
