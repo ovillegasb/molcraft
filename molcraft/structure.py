@@ -82,7 +82,69 @@ def load_xyz(file, warning=False):
     return coord
 
 
-def load_mol2(file):
+def load_gro(file, warning=False):
+    """
+    Read a file gro.
+
+    Parameters
+    ----------
+    file : str
+        File path.
+
+    warning : bool
+        Display or no warning when reading a file.
+
+    Returns
+    -------
+    DataFrame
+        The element symbols, mass, atom number and coordinates (in angstroms).
+
+    """
+    # Regular expression that extracts matrix XYZ.
+    atoms = re.compile(r"""
+            ^\s*
+            (?P<idx>\d+)(?P<resname>[A-Za-z]+)\s+     # resid resname.
+            (?P<atsb>[A-Za-z]+\d?\d?)\s*              # Atom name.
+            \d+\s+
+            (?P<x>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for X.
+            (?P<y>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for Y.
+            (?P<z>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for Z.
+            """, re.X)
+
+    gro = []
+    with open(file, "r") as GRO:
+        for line in GRO:
+            if atoms.match(line):
+                m = atoms.match(line)
+                gro.append(m.groupdict())
+
+    coord = pd.DataFrame(gro)
+    coord = coord.astype({
+        "idx": np.int64,
+        "x": np.float64,
+        "y": np.float64,
+        "z": np.float64
+    })
+
+    coord["x"] *= 10.
+    coord["y"] *= 10.
+    coord["z"] *= 10.
+
+    try:
+        coord["mass"] = coord["atsb"].apply(lambda at: Elements[at]["mass"])
+        coord["num"] = coord["atsb"].apply(lambda at: Elements[at]["num"])
+    except KeyError:
+        if warning:
+            print("Careful! the atomic symbols present were not recognized.")
+        else:
+            pass
+    # This file has no partial charges .
+    coord["charge"] = 0.0
+
+    return coord
+
+
+def load_mol2(file, connect=False):
     """
     Obtain the geometry and partial charges from mol2 file.
 
@@ -125,13 +187,54 @@ def load_mol2(file):
 
     # dfatoms = dfatoms.set_index('atid')
 
-    """ Adding mass """
-    dfatoms["mass"] = dfatoms["atsb"].apply(lambda at: Elements[at]["mass"])
+    try:
+        """ Adding mass """
+        dfatoms["mass"] = dfatoms["atsb"].apply(lambda at: Elements[at]["mass"])
 
-    """ Adding atnum """
-    dfatoms["num"] = dfatoms["atsb"].apply(lambda at: Elements[at]["num"])
+        """ Adding atnum """
+        dfatoms["num"] = dfatoms["atsb"].apply(lambda at: Elements[at]["num"])
+    except KeyError:
+        pass
 
-    return dfatoms
+    if connect:
+        bonds_list = []
+        readLine = False
+        with open(file, "r", encoding="utf-8") as f:
+            for line in f:
+                if "@<TRIPOS>BOND" in line:
+                    readLine = True
+                    continue
+                elif readLine and "@<TRIPOS>" not in line:
+                    lineNew = line.replace("\n", "")
+                    lineNew = lineNew.split()
+                    at1 = int(lineNew[1]) - 1
+                    at2 = int(lineNew[2]) - 1
+                    bonds_list.append((at1, at2))
+
+                elif readLine and "@<TRIPOS>" in line:
+                    readLine = False
+
+                else:
+                    continue
+
+        connect = {}
+        for iat, jat in bonds_list:
+            try:
+                connect[iat].append(jat)
+            except KeyError:
+                connect[iat] = []
+                connect[iat].append(jat)
+
+            try:
+                connect[jat].append(iat)
+            except KeyError:
+                connect[jat] = []
+                connect[jat].append(iat)
+
+        return dfatoms, connect
+
+    else:
+        return dfatoms
 
 
 def load_pdb(file):
@@ -154,13 +257,13 @@ def load_pdb(file):
     """
     coord = re.compile(r"""
             \w+\s+
-            (?P<atid>\d+)\s+           # Atom id.
-            (?P<atsb>\w+)\s+           # Atomic number.
-            \w+\s+
+            (?P<atid>\d+)\s+               # Atom id.
+            (?P<atsb>[a-zA-Z_]+)\d?\d?\s+  # Atomic number.
+            \w+\s+[A]?\s*
             \d+\s+
-            (?P<x>[+-]?\d+\.\d+)\s+    # Orthogonal coordinates for X.
-            (?P<y>[+-]?\d+\.\d+)\s+    # Orthogonal coordinates for Y.
-            (?P<z>[+-]?\d+\.\d+)\s+    # Orthogonal coordinates for Z.
+            (?P<x>[+-]?\d+\.\d+)\s+        # Orthogonal coordinates for X.
+            (?P<y>[+-]?\d+\.\d+)\s+        # Orthogonal coordinates for Y.
+            (?P<z>[+-]?\d+\.\d+)\s+        # Orthogonal coordinates for Z.
             """, re.X)
 
     data = list()
@@ -185,8 +288,11 @@ def load_pdb(file):
         'z': np.float64})
     # coord = coord.set_index('atid')
 
-    coord["mass"] = coord["atsb"].apply(lambda at: Elements[at]["mass"])
-    coord["num"] = coord["atsb"].apply(lambda at: Elements[at]["num"])
+    try:
+        coord["mass"] = coord["atsb"].apply(lambda at: Elements[at]["mass"])
+        coord["num"] = coord["atsb"].apply(lambda at: Elements[at]["num"])
+    except KeyError:
+        pass
     # This file has no partial charges .
     coord["charge"] = 0.0
 
@@ -286,7 +392,7 @@ class connectivity(nx.DiGraph):
 
     def reset_nodes(self):
         """Reset le count of node from 0 to new sizes nodes."""
-        mapping = {value: count for count, value in enumerate(self.nodes, start=0)}
+        mapping = {value: count for count, value in enumerate(sorted(self.nodes), start=0)}
 
         return nx.relabel_nodes(self, mapping, copy=True)
         # self = nx.relabel_nodes(self, mapping, copy=True)
@@ -304,10 +410,10 @@ class connectivity(nx.DiGraph):
 
     def get_df(self):
         """Return a coordinate dataframe from connectivity."""
-        indexs = list(self.nodes)
+        indexs = sorted(self.nodes)
         rows = list()
 
-        for i in self.nodes:
+        for i in indexs:
             rows.append(self.nodes[i])
 
         df = pd.DataFrame(rows, index=indexs)
@@ -316,9 +422,9 @@ class connectivity(nx.DiGraph):
 
     def define_atoms(self, coord):
         """Define the atoms of the system like nodes."""
+        # Define new nodes from dataframe
         for i in coord.index:
             # print(coord.loc[i, :].to_dict())
-
             row = coord.loc[i, :].to_dict()
             self.add_node(i, **row)
 
@@ -917,6 +1023,43 @@ class connectivity(nx.DiGraph):
                 )
 
 
+class BULK:
+    """
+    Class representing a molecular system.
+
+    Attributes
+    ----------
+    dfatoms : DataFrame
+        Table with all the information of the atoms of the molecule, symbol,
+        mass and x and z coordinates.
+
+    Methods
+    -------
+    add_mol : connectivity
+
+    """
+
+    def __init__(self, box):
+        """Initialize by creating the system."""
+        self.Molecules = dict()
+        self.nmol = 0
+        self.box = box
+
+    def add_mol(self, mol):
+        """Add a molecule to the system."""
+        self.Molecules[self.nmol] = mol
+        self.nmol += 1
+
+    def read_connectivity(self, dfatoms, connect):
+        """Build the system from the atoms and their connectivity."""
+        self.connectivity = connectivity()
+        self.connectivity.define_atoms(dfatoms)
+        self.connectivity.read_dict(connect)
+
+        self.dfatoms = dfatoms
+        self.connect = connect
+
+
 class MOL:
     """
     Class used to represent a molecule.
@@ -938,9 +1081,6 @@ class MOL:
     # Atoms
     dfatoms = pd.DataFrame()
     atoms = list()
-
-    # Connectivity
-    connect = connectivity()
 
     # Bonds
     bonds_list = []
@@ -976,6 +1116,9 @@ class MOL:
         self.resume = resume
         self.atoms_count = {"C": 0, "N": 0, "H": 0}
 
+        # Connectivity
+        self.connect = connectivity()
+
         if file:
             self.load_file(file, **kwargs)
 
@@ -993,7 +1136,7 @@ class MOL:
 
         # RES name from file name
         if res:
-            self.res
+            self.res = res
         else:
             self.res = file.split('/')[-1].split('.')[0].upper()
 
@@ -1180,7 +1323,7 @@ def pbcboxs():
 def save_xyz(coord, name='file'):
     """
     Save an xyz file of coordinates.
-
+    
     Parameters:
     -----------
     coord : DataFrame
@@ -1188,9 +1331,10 @@ def save_xyz(coord, name='file'):
     name : str
 
     """
-
     if not name.endswith(".xyz"):
         xyz = "%s.xyz" % name
+    else:
+        xyz = name
 
     nat = len(coord)
     lines = ''
@@ -1240,3 +1384,32 @@ def save_gro(coord, name, box, title="GRO FILE", time=0.0, out="."):
         box[2] / 10))
 
     GRO.close()
+
+
+def save_pdb(coord, name, out=".", box=[], title="PDB FILE molcraft", res="UNK"):
+    """
+    Save an pdb file of coordinates.
+
+    Parameters:
+    -----------
+    coord : DataFrame
+    """
+
+    pdb = name
+    PDB = open(f"{out}/{pdb}.gro", "w", encoding="utf-8")
+
+    for i in coord.index:
+        PDB.write("ATOM{:>11}\n".format(
+            i + 1
+            )
+        )
+        ## PDB.write("{:>8}{:>7}{:5d}{:8.3f}{:8.3f}{:8.3f}\n".format(
+        ##     str(coord.loc[i, "resid"]) + coord.loc[i, "resname"],
+        ##     coord.loc[i, "atsb"],
+        ##     i + 1,
+        ##     coord.loc[i, "x"] * 0.1 + box[0] / 20,
+        ##     coord.loc[i, "y"] * 0.1 + box[1] / 20,
+        ##     coord.loc[i, "z"] * 0.1 + box[2] / 20)
+        ## )
+
+    PDB.close()
