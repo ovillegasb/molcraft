@@ -104,7 +104,7 @@ def load_gro(file, warning=False):
     atoms = re.compile(r"""
             ^\s*
             (?P<idx>\d+)(?P<resname>[A-Za-z]+)\s+     # resid resname.
-            (?P<atsb>[A-Za-z]+\d?\d?)\s*              # Atom name.
+            (?P<atsb>[A-Za-z]+)\d?\d?\s*              # Atom name.
             \d+\s+
             (?P<x>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for X.
             (?P<y>[+-]?\d+\.\d+)\s+           # Orthogonal coordinates for Y.
@@ -234,7 +234,7 @@ def load_mol2(file, connect=False):
         return dfatoms, connect
 
     else:
-        return dfatoms
+        return dfatoms, None
 
 
 def load_pdb(file):
@@ -325,13 +325,14 @@ def vector_PBC(r1, r2, box):
 
 def change_atsb(x):
     """Change atom types to simple symbols."""
-    if x in ["ca", "cb", "CT", "CM", "C"]:
+    #CORRECTION
+    if x in ["ca", "cb", "CT", "CM", "C", "CTO"]:
         return "C"
-    elif x in ["ha", "ho", "HT", "HM", "H"]:
+    elif x in ["ha", "ho", "HT", "HM", "H", "HOopls"]:
         return "H"
     elif x in ["nf", "ne", "N"]:
         return "N"
-    elif x in ["oh", "O"]:
+    elif x in ["oh", "O", "OHopls"]:
         return "O"
     elif x in ["DU"]:
         return "DU"
@@ -1128,7 +1129,8 @@ class MOL:
         if file.endswith("xyz"):
             MOL.dfatoms = load_xyz(file)
         elif file.endswith("mol2"):
-            MOL.dfatoms = load_mol2(file)
+            MOL.dfatoms, connect = load_mol2(file, connect=connectivity)
+            print(MOL.dfatoms)
         elif file.endswith("pdb"):
             MOL.dfatoms, connect = load_pdb(file)
         else:
@@ -1145,7 +1147,7 @@ class MOL:
 
         # Search connectivity
         if connectivity:
-            if not connect:
+            if connect is None:
                 self._connectivity()
             else:
                 self.connect.define_atoms(MOL.dfatoms)
@@ -1386,7 +1388,7 @@ def save_gro(coord, name, box, title="GRO FILE", time=0.0, out="."):
     GRO.close()
 
 
-def save_pdb(coord, name, out=".", box=[], title="PDB FILE molcraft", res="UNK"):
+def save_pdb(coord, name, out=".", connect=[], box=np.zeros(3), title="PDB FILE molcraft", res="UNK"):
     """
     Save an pdb file of coordinates.
 
@@ -1396,20 +1398,25 @@ def save_pdb(coord, name, out=".", box=[], title="PDB FILE molcraft", res="UNK")
     """
 
     pdb = name
-    PDB = open(f"{out}/{pdb}.gro", "w", encoding="utf-8")
+    PDB = open(f"{out}/{pdb}.pdb", "w", encoding="utf-8")
+    print(coord)
 
     for i in coord.index:
-        PDB.write("ATOM{:>11}\n".format(
-            i + 1
+        PDB.write("ATOM  {:>5} {:<3}  {:>3} A {:>3}    {:8.3f}{:8.3f}{:8.3f} 1.00  0.00\n".format(
+                i + 1,
+                coord.loc[i, "atsb"],
+                coord.loc[i, "resname"],
+                coord.loc[i, "resid"],
+                coord.loc[i, "x"] + box[0] / 2,
+                coord.loc[i, "y"] + box[1] / 2,
+                coord.loc[i, "z"] + box[2] / 2
             )
         )
-        ## PDB.write("{:>8}{:>7}{:5d}{:8.3f}{:8.3f}{:8.3f}\n".format(
-        ##     str(coord.loc[i, "resid"]) + coord.loc[i, "resname"],
-        ##     coord.loc[i, "atsb"],
-        ##     i + 1,
-        ##     coord.loc[i, "x"] * 0.1 + box[0] / 20,
-        ##     coord.loc[i, "y"] * 0.1 + box[1] / 20,
-        ##     coord.loc[i, "z"] * 0.1 + box[2] / 20)
-        ## )
+    for at in connect:
+        PDB.write("CONECT  {:>5}  {}\n".format(
+                at + 1,
+                "  ".join([str(a + 1) for a in connect[at]])
+            )
+        )
 
     PDB.close()
