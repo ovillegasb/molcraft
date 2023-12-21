@@ -304,10 +304,10 @@ def minImagenC(q1, q2, L):
     dq = q2 - q1
     if dq > L * 0.5:
         dq -= L
-    
+
     if dq <= -L * 0.5:
         dq += L
-    
+
     return dq
 
 
@@ -1322,7 +1322,7 @@ def pbcboxs():
 """Functions for saving information."""
 
 
-def save_xyz(coord, name='file'):
+def save_xyz(coord, name='file', get_lines=False):
     """
     Save an xyz file of coordinates.
     
@@ -1345,6 +1345,9 @@ def save_xyz(coord, name='file'):
     for i in coord.index:
         line = (coord.atsb[i], coord.x[i], coord.y[i], coord.z[i])
         lines += '%3s%8.3f%8.3f%8.3f\n' % line
+
+    if get_lines:
+        return lines
     # writing all
     with open(xyz, "w") as f:
         f.write(lines)
