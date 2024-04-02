@@ -17,6 +17,7 @@ Python module used to manage molecular systems for molecular modeling and calcul
     - [ ] Analysis of UV-Vis spectra.
 
 - [ ] Obtaining molecular structural characteristics.
+    - [ ] Binding site detector.
     - [ ] List of improper dihedrals.
     - [ ] Extract aromatic cycles present in the molecule.
 

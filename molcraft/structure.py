@@ -1399,7 +1399,6 @@ def save_pdb(coord, name, out=".", connect=[], box=np.zeros(3), title="PDB FILE 
     -----------
     coord : DataFrame
     """
-
     pdb = name
     PDB = open(f"{out}/{pdb}.pdb", "w", encoding="utf-8")
     print(coord)
@@ -1423,3 +1422,13 @@ def save_pdb(coord, name, out=".", connect=[], box=np.zeros(3), title="PDB FILE 
         )
 
     PDB.close()
+
+
+def translate_to(coord, translation, box):
+    """Translate coordinates using a vector."""
+    newcoord = np.zeros(coord.shape)
+    for i, atom in enumerate(coord):
+        for j, q in enumerate(atom):
+            newcoord[i, j] = minImagenC(translation[j], q, box[j])
+
+    return newcoord
