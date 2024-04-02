@@ -1424,11 +1424,20 @@ def save_pdb(coord, name, out=".", connect=[], box=np.zeros(3), title="PDB FILE 
     PDB.close()
 
 
-def translate_to(coord, translation, box):
+def translate_coord_pbc(coord, translation, box, box_init=[0, 0, 0]):
     """Translate coordinates using a vector."""
     newcoord = np.zeros(coord.shape)
     for i, atom in enumerate(coord):
         for j, q in enumerate(atom):
-            newcoord[i, j] = minImagenC(translation[j], q, box[j]) + translation[j]
+            L = abs(box[j] - box_init[j])
+            center = (box[j] + box_init[j]) / 2
+            t_q = translation[j]
+            dq = q + t_q
+            if dq > L * 0.5 + center:
+                dq -= L
+            if dq <= -L * 0.5 + center:
+                dq += L
+
+            newcoord[i, j] = dq
 
     return newcoord
