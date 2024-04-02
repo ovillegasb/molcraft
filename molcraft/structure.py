@@ -1429,6 +1429,6 @@ def translate_to(coord, translation, box):
     newcoord = np.zeros(coord.shape)
     for i, atom in enumerate(coord):
         for j, q in enumerate(atom):
-            newcoord[i, j] = minImagenC(translation[j], q, box[j])
+            newcoord[i, j] = minImagenC(translation[j], q, box[j]) + translation[j]
 
     return newcoord
