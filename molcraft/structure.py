@@ -1460,3 +1460,73 @@ def translate_center_to(coord, newcenter, box, box_init=[0, 0, 0]):
             newcoord[i, j] = dq
 
     return newcoord
+
+
+# Skeleton of dummy atoms formed a geometry
+skeleton_X = {
+    "D*h": [
+        "XX",
+        [(-1, 0, 0), (1, 0, 0)]
+    ],
+    "D4h": [
+        "XXXX",
+        [(1, 0, 0), (0, 1, 0), (-1, 0, 0), (0, -1, 0)]
+    ],
+    "D2h": [
+        "XXXX",
+        [
+            (0.86602540, -0.5, 0),
+            (0.86602540, 0.5, 0),
+            (-0.86602540, -0.5, 0),
+            (-0.86602540, 0.5, 0)
+        ]
+    ],
+    "D3h": [
+        "XXX",
+        [
+            (0, 1, 0),
+            (0, -np.sin(np.deg2rad(30.0)), -np.cos(np.deg2rad(30.0))),
+            (0, -np.sin(np.deg2rad(30.0)), np.cos(np.deg2rad(30.0)))
+        ]
+    ],
+    "Td": [
+        "XXXX",
+        [
+            (0, 0, 1),
+            (0, -0.94280904, -0.33333333),
+            (0.81649658, 0.47140452, -0.33333333),
+            (-0.81649658, 0.47140452, -0.33333333)
+        ]
+    ],
+    "Oh": [
+        "XXXXXX",
+        [
+            (0, 0, 1),
+            (0, 1, 0),
+            (1, 0, 0),
+            (0, 0, -1),
+            (0, -1, 0),
+            (-1, 0, 0)
+        ]
+    ]
+}
+
+
+def dummy_geometry(poitgroup):
+    """
+    Return a dictionary with the chemical formula and its coordinates.
+
+    This is done without occupying the center of the geometry. Each dummy atom has a distance of
+    1.0 from the center.
+
+    Parameters:
+    -----------
+    poitgroup : str
+        Specifies the point group to use.
+    """
+    info = skeleton_X[poitgroup].copy()
+
+    formula = info[0]
+    coord = info[1]
+
+    return formula, coord
