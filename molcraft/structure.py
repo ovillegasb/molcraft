@@ -1441,3 +1441,22 @@ def translate_coord_pbc(coord, translation, box, box_init=[0, 0, 0]):
             newcoord[i, j] = dq
 
     return newcoord
+
+
+def translate_center_to(coord, newcenter, box, box_init=[0, 0, 0]):
+    """Translate center of a coordinate to a defined position."""
+    newcoord = np.zeros(coord.shape)
+    center_geom = np.sum(coord, axis=0) / len(coord)
+    for i, atom in enumerate(coord):
+        for j, q in enumerate(atom):
+            L = abs(box[j] - box_init[j])
+            box_center = (box[j] + box_init[j]) / 2
+            dq = q - center_geom[j] + newcenter[j]
+            if dq > L * 0.5 + box_center:
+                dq -= L
+            if dq <= -L * 0.5 + box_center:
+                dq += L
+
+            newcoord[i, j] = dq
+
+    return newcoord
